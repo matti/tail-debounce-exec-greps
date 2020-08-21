@@ -15,8 +15,17 @@ import (
 
 func main() {
 	var debug bool
+	var silent bool
 	flag.BoolVar(&debug, "debug", false, "debug")
+	flag.BoolVar(&silent, "silent", false, "silent")
 	flag.Parse()
+
+	tailLogger := tail.DiscardingLogger
+	if debug {
+		tailLogger = tail.DefaultLogger
+	}
+	tailLogger.SetPrefix("tail-debounce-exec-greps ")
+	log.SetPrefix("tail-debounce-exec-greps ")
 
 	if !debug {
 		log.SetOutput(ioutil.Discard)
@@ -35,10 +44,7 @@ func main() {
 	cmd := strings.Fields(flag.Args()[2])
 	greps := flag.Args()[3:]
 
-	tailLogger := tail.DiscardingLogger
-	if debug {
-		tailLogger = tail.DefaultLogger
-	}
+	log.Println(filename, duration, cmd, greps)
 
 	t, _ := tail.TailFile(filename, tail.Config{
 		ReOpen:    true,
@@ -49,7 +55,7 @@ func main() {
 
 	lastExec := time.Now()
 	for line := range t.Lines {
-		log.Println(line.Text)
+		log.Printf(line.Text)
 		for _, grep := range greps {
 			if strings.Contains(line.Text, grep) {
 				log.Printf("matches %s", grep)
@@ -60,8 +66,10 @@ func main() {
 				lastExec = time.Now()
 
 				cmd := exec.Command(cmd[0], cmd[1:]...)
-				cmd.Stdout = os.Stdout
-				cmd.Stderr = os.Stderr
+				if !silent {
+					cmd.Stdout = os.Stdout
+					cmd.Stderr = os.Stderr
+				}
 
 				switch err := cmd.Run(); err.(type) {
 				case nil, *exec.ExitError:
